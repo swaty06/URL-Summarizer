@@ -53,6 +53,13 @@ def process_urls(urls):
     initialize_components()
 
     yield "Resetting vector store...✅"
+    try:
+    vector_store.delete_collection()
+    vector_store._collection = vector_store._client.create_collection(
+       
+    )
+except Exception as e:
+    print(f"Error resetting collection: {e}")
     vector_store.reset_collection()
 
     yield "Loading data...✅"
