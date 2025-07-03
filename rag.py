@@ -1,4 +1,4 @@
-# @Author: Dhaval Patel Copyrights Codebasics Inc. and LearnerX Pvt Ltd.
+
 
 from uuid import uuid4
 from dotenv import load_dotenv
