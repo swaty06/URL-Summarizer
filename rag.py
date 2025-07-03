@@ -1,125 +1,95 @@
 
 
-from __future__ import annotations
-
-import sys
 from uuid import uuid4
-from pathlib import Path
-from typing import Iterable, List
-
 from dotenv import load_dotenv
+from pathlib import Path
 from langchain.chains import RetrievalQAWithSourcesChain
 from langchain_community.document_loaders import UnstructuredURLLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+#from langchain_chroma import Chroma
 from langchain.vectorstores import Chroma
 from langchain_groq import ChatGroq
+#from langchain_huggingface.embeddings import HuggingFaceEmbeddings
 from langchain.embeddings import HuggingFaceEmbeddings
-
-# --------------------------------------------------------------------------- #
-# Configuration
-# --------------------------------------------------------------------------- #
 
 load_dotenv()
 
-CHUNK_SIZE = 1_000
+# Constants
+CHUNK_SIZE = 1000
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+VECTORSTORE_DIR = Path(__file__).parent / "resources/vectorstore"
 COLLECTION_NAME = "real_estate"
-VECTOR_DB_DIR = Path("resources") / "vectorstore"
 
-# Make sure the persistence folder exists
-VECTOR_DB_DIR.mkdir(parents=True, exist_ok=True)
-
-_llm: ChatGroq | None = None
-_vector_store: Chroma | None = None
+llm = None
+vector_store = None
 
 
-# --------------------------------------------------------------------------- #
-# Helper functions
-# --------------------------------------------------------------------------- #
+def initialize_components():
+    global llm, vector_store
 
-def get_llm() -> ChatGroq:
-    """Lazily initialise the LLM so it is only created once."""
-    global _llm
-    if _llm is None:
-        _llm = ChatGroq(
-            model="llama-3-70b-versatile",
-            temperature=0.0,
-            max_tokens=512,
+    if llm is None:
+        llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.9, max_tokens=500)
+
+    if vector_store is None:
+        ef = HuggingFaceEmbeddings(
+            model_name=EMBEDDING_MODEL,
+            model_kwargs={"trust_remote_code": True}
         )
-    return _llm
 
-
-def get_vector_store() -> Chroma:
-    """Lazily load (or create) the local Chroma collection."""
-    global _vector_store
-    if _vector_store is None:
-        embeddings = HuggingFaceEmbeddings(
-            model_name=EMBEDDING_MODEL, model_kwargs={"trust_remote_code": True}
-        )
-        _vector_store = Chroma(
+        vector_store = Chroma(
             collection_name=COLLECTION_NAME,
-            embedding_function=embeddings,
-            persist_directory=str(VECTOR_DB_DIR),
+            embedding_function=ef,
+            persist_directory=str(VECTORSTORE_DIR)
         )
-    return _vector_store
 
 
-def ingest(urls: List[str]) -> None:
-    """Fetch, chunk, and embed the content from *urls*."""
-    vs = get_vector_store()
-    print("⏳ Resetting collection …", flush=True)
-    vs.reset_collection()
+def process_urls(urls):
+    """
+    This function scraps data from a url and stores it in a vector db
+    :param urls: input urls
+    :return:
+    """
+    yield "Initializing Components"
+    initialize_components()
 
-    print("⏳ Fetching URLs …", flush=True)
+    yield "Resetting vector store...✅"
+    vector_store.reset_collection()
+
+    yield "Loading data...✅"
     loader = UnstructuredURLLoader(urls=urls)
-    raw_docs = loader.load()
+    data = loader.load()
 
-    print("⏳ Chunking …", flush=True)
-    splitter = RecursiveCharacterTextSplitter(
-        separators=["\n\n", "\n", ".", " "], chunk_size=CHUNK_SIZE
+    yield "Splitting text into chunks...✅"
+    text_splitter = RecursiveCharacterTextSplitter(
+        separators=["\n\n", "\n", ".", " "],
+        chunk_size=CHUNK_SIZE
     )
-    docs = splitter.split_documents(raw_docs)
+    docs = text_splitter.split_documents(data)
 
-    print(f"⏳ Adding {len(docs)} chunks to vector store …", flush=True)
-    vs.add_documents(docs, ids=[str(uuid4()) for _ in docs])
-    vs.persist()
-    print("✅ Ingestion complete.")
+    yield "Add chunks to vector database...✅"
+    uuids = [str(uuid4()) for _ in range(len(docs))]
+    vector_store.add_documents(docs, ids=uuids)
 
+    yield "Done adding docs to vector database...✅"
 
-def ask(question: str) -> None:
-    """Run a retrieval‑augmented generation query and print answer + sources."""
-    vs = get_vector_store()
-    if vs._collection.count() == 0:  # pylint: disable=protected-access
-        sys.exit("Vector store is empty. Ingest documents first.")
+def generate_answer(query):
+    if not vector_store:
+        raise RuntimeError("Vector database is not initialized ")
 
-    chain = RetrievalQAWithSourcesChain.from_llm(
-        llm=get_llm(), retriever=vs.as_retriever()
-    )
-    print("⏳ Thinking …", flush=True)
-    result = chain({"question": question})
-    print(f"\nAnswer:\n{result['answer']}\n")
-    if sources := result.get("sources"):
-        print("Sources:")
-        for src in sources.split("\n"):
-            print(f"- {src}")
+    chain = RetrievalQAWithSourcesChain.from_llm(llm=llm, retriever=vector_store.as_retriever())
+    result = chain.invoke({"question": query}, return_only_outputs=True)
+    sources = result.get("sources", "")
+
+    return result['answer'], sources
 
 
-# --------------------------------------------------------------------------- #
-# CLI
-# --------------------------------------------------------------------------- #
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.exit(
-            "Usage:\n  python real_estate_qa.py ingest <url1> <url2> …\n  python real_estate_qa.py ask \"<your question>\""
-        )
+    urls = [
+        "https://www.cnbc.com/2024/12/21/how-the-federal-reserves-rate-policy-affects-mortgages.html",
+        "https://www.cnbc.com/2024/12/20/why-mortgage-rates-jumped-despite-fed-interest-rate-cut.html"
+    ]
 
-    command, *args = sys.argv[1:]
-    match command:
-        case "ingest":
-            if not args:
-                sys.exit("Please provide at least one URL to ingest.")
-            ingest(args)
-        case "ask":
-            ask(" ".join(args))
-        case _:
-            sys.exit(f"Unknown command: {command}")
+    process_urls(urls)
+    answer, sources = generate_answer("Tell me what was the 30 year fixed mortagate rate along with the date?")
+    print(f"Answer: {answer}")
+    print(f"Sources: {sources}")
