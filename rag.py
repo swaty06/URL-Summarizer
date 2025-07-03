@@ -54,14 +54,14 @@ def process_urls(urls):
 
     yield "Resetting vector store...✅"
     try:
-    vector_store.delete_collection()
-    vector_store._collection = vector_store._client.create_collection(
+        vector_store.delete_collection()
+        vector_store._collection = vector_store._client.create_collection(
+             name=vector_store._collection.name
        
     )
-except Exception as e:
-    print(f"Error resetting collection: {e}")
-    vector_store.reset_collection()
-
+    except Exception as e:
+        print(f"Error resetting collection: {e}")
+    
     yield "Loading data...✅"
     loader = UnstructuredURLLoader(urls=urls)
     data = loader.load()
