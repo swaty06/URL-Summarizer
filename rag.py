@@ -89,7 +89,7 @@ def generate_answer(query):
 
     return result['answer'], sources
 
-
+'''
 if __name__ == "__main__":
     urls = [
         "https://www.cnbc.com/2024/12/21/how-the-federal-reserves-rate-policy-affects-mortgages.html",
@@ -100,3 +100,4 @@ if __name__ == "__main__":
     answer, sources = generate_answer("Tell me what was the 30 year fixed mortagate rate along with the date?")
     print(f"Answer: {answer}")
     print(f"Sources: {sources}")
+'''
