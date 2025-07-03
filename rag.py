@@ -17,7 +17,7 @@ load_dotenv()
 # Constants
 CHUNK_SIZE = 1000
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-VECTORSTORE_DIR = Path(__file__).parent / "resources/vectorstore"
+VECTORSTORE_DIR = "resources/vectorstore"
 COLLECTION_NAME = "real_estate"
 
 llm = None
