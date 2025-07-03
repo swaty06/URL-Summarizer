@@ -7,3 +7,4 @@ langchain-groq
 langchain-community
 protobuf
 langchain-huggingface
+sentence-transformers
