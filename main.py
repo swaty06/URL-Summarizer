@@ -5,7 +5,7 @@ sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 import streamlit as st
 from rag import process_urls, generate_answer
 
-st.title("Real Estate Research Tool")
+st.title("Research Tool")
 
 url1 = st.sidebar.text_input("URL 1")
 url2 = st.sidebar.text_input("URL 2")
