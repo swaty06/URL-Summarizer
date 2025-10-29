@@ -1,13 +1,25 @@
+# Core utilities
 python-dotenv
 streamlit
+protobuf
+pysqlite3-binary
+
+# LangChain ecosystem
+langchain
+langchain-core
+langchain-community
+langchain-groq
+langchain-huggingface
+langchain-chroma
+langchain-text-splitters
+
+# Vector DB and embeddings
+chromadb
+sentence-transformers
+
+# Document loaders and parsing
 unstructured
 tiktoken
-langchain-chroma
-langchain-groq
-langchain-community
-protobuf
-langchain-huggingface
-sentence-transformers
-pysqlite3-binary
-langchain
-chromadb
+
+# Optional quality-of-life tools
+requests
