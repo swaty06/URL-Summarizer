@@ -3,9 +3,9 @@
 from uuid import uuid4
 from dotenv import load_dotenv
 from pathlib import Path
-from langchain.chains import create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
 from langchain_community.document_loaders import UnstructuredURLLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
@@ -41,8 +41,6 @@ def initialize_components():
 def process_urls(urls):
     """
     This function scrapes data from a url and stores it in a vector db
-    :param urls: input urls
-    :return:
     """
     yield "Initializing Components...✅"
     initialize_components()
@@ -75,111 +73,51 @@ def process_urls(urls):
 
 def generate_answer(query):
     """
-    Generate answer using modern RAG chain with sources
+    Generate answer using simple RAG approach with sources
     """
     if not vector_store:
         raise RuntimeError("Vector database is not initialized")
     
-    # Create retriever
+    # Retrieve relevant documents
     retriever = vector_store.as_retriever(search_kwargs={"k": 4})
+    docs = retriever.get_relevant_documents(query)
     
-    # Create prompt that includes source tracking
-    system_prompt = """You are an assistant for question-answering tasks. 
-Use the following pieces of retrieved context to answer the question. 
-If you don't know the answer, say that you don't know. 
-Keep the answer concise and informative.
+    if not docs:
+        return "No relevant information found.", ""
+    
+    # Format context and collect sources
+    context_parts = []
+    sources_set = set()
+    
+    for doc in docs:
+        context_parts.append(doc.page_content)
+        source = doc.metadata.get("source", "")
+        if source:
+            sources_set.add(source)
+    
+    context = "\n\n".join(context_parts)
+    
+    # Create prompt
+    prompt_template = """Answer the question based on the following context. 
+If you don't know the answer, say so clearly.
 
-Context: {context}"""
+Context:
+{context}
+
+Question: {question}
+
+Answer:"""
     
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}")
-    ])
+    prompt = ChatPromptTemplate.from_template(prompt_template)
     
-    # Create chains
-    question_answer_chain = create_stuff_documents_chain(llm, prompt)
-    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
+    # Create simple chain
+    chain = prompt | llm | StrOutputParser()
     
     try:
-        # Invoke the chain
-        response = rag_chain.invoke({"input": query})
-        
-        # Extract answer
-        answer = response.get("answer", "No answer generated.")
-        
-        # Extract and format sources
-        source_docs = response.get("context", [])
-        sources_list = []
-        
-        for doc in source_docs:
-            source = doc.metadata.get("source", "")
-            if source and source not in sources_list:
-                sources_list.append(source)
-        
-        # Join sources as comma-separated string (matching original format)
-        sources = ", ".join(sources_list) if sources_list else ""
-        
-        return answer, sources
-    
-    except Exception as e:
-        return f"Error generating answer: {str(e)}", ""
-
-# Alternative: If you want the exact same interface as RetrievalQAWithSourcesChain
-def generate_answer_legacy_format(query):
-    """
-    Generate answer with exact same output format as the old RetrievalQAWithSourcesChain
-    """
-    if not vector_store:
-        raise RuntimeError("Vector database is not initialized")
-    
-    retriever = vector_store.as_retriever(search_kwargs={"k": 4})
-    
-    system_prompt = """Answer the question based only on the following context.
-Also provide the sources used to answer the question.
-
-Context: {context}"""
-    
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system_prompt),
-        ("human", "{input}")
-    ])
-    
-    question_answer_chain = create_stuff_documents_chain(llm, prompt)
-    rag_chain = create_retrieval_chain(retriever, question_answer_chain)
-    
-    try:
-        response = rag_chain.invoke({"input": query})
-        
-        answer = response.get("answer", "")
-        source_docs = response.get("context", [])
-        
-        # Format sources
-        sources_set = set()
-        for doc in source_docs:
-            source = doc.metadata.get("source", "")
-            if source:
-                sources_set.add(source)
-        
+        answer = chain.invoke({"context": context, "question": query})
         sources = ", ".join(sources_set)
         
         return answer, sources
     
     except Exception as e:
-        return f"Error: {str(e)}", ""
-
-'''
-if __name__ == "__main__":
-    urls = [
-        "https://www.cnbc.com/2024/12/21/how-the-federal-reserves-rate-policy-affects-mortgages.html",
-        "https://www.cnbc.com/2024/12/20/why-mortgage-rates-jumped-despite-fed-interest-rate-cut.html"
-    ]
-    
-    # Process URLs
-    for status in process_urls(urls):
-        print(status)
-    
-    # Generate answer
-    answer, sources = generate_answer("Tell me what was the 30 year fixed mortgage rate along with the date?")
-    print(f"Answer: {answer}")
-    print(f"Sources: {sources}")
-'''
+        return f"Error generating answer: {str(e)}", ""
