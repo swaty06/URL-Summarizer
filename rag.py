@@ -82,7 +82,7 @@ def generate_answer(query):
     
     # Retrieve relevant documents
     retriever = vector_store.as_retriever(search_kwargs={"k": 4})
-    #docs = retriever.get_relevant_documents(query)
+   
     docs = retriever.invoke(query)
 
     
